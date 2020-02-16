@@ -44,7 +44,7 @@ h2 {
 
     &:hover {
       cursor: pointer;
-      background: $bgColor;
+      background: transparentize($borderColor, 0.7);
       border: 1px solid $borderColor;
       padding: 2px 7px;
       margin: 0 0;
@@ -52,6 +52,7 @@ h2 {
 
     &.selected {
       border: 1px solid $selectedBorder;
+      background: transparentize($selectedBorder, 0.9);
       padding: 2px 7px;
       margin: 0 0;
     }

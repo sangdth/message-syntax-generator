@@ -28,9 +28,15 @@ import './styles.scss';
 const { Option } = Select;
 
 const Input = (props: any) => {
-  const { onChange, onClick, root, value } = props;
+  const {
+    onChange,
+    onClick,
+    onSelect,
+    root,
+    value,
+  } = props;
 
-  const makeHash = () => Math.random().toString(36).slice(-5);
+  const makeHash = () => Math.random().toString(36).slice(-9);
 
   const initialSyntax = useMemo(() => {
     if (value && value.syntax) {
@@ -46,39 +52,34 @@ const Input = (props: any) => {
   };
 
   const [text, setText] = useState('');
+  const [words, setWords] = useState([]);
   const [inputText, setInputText] = useState(initialInputText);
-  const [current, setCurrent] = useState();
+  const [selected, setSelected] = useState();
   const [cachePosition, setCachedPosition] = useState();
   const [sub, setSub] = useState(value ? value.sub : null);
   const [syntax, setSyntax] = useState(initialSyntax);
 
-  const words = useMemo(
-    () => text.split(' ')
+  useEffect(() => {
+    if (!text) {
+      setSelected(undefined);
+    }
+  }, [text]);
+
+  useDebounce(() => {
+    setWords(text.split(' ')
       .filter((s: string) => s)
       .map((s: string, i: number) => ({
         index: i,
-        key: `${i}-${makeHash()}`,
+        id: `${makeHash()}`,
         value: s,
-      })),
-    [text],
-  );
-
-  const selected = useMemo(() => {
-    if (current !== undefined) {
-      return {
-        ...words[current],
-        sub,
-        syntax,
-      };
-    }
-    return undefined;
-  }, [current, sub, syntax, words]);
+      })));
+  }, 350, [text]);
 
   const initialMatches = useMemo(() => {
     if (selected && selected.syntax) {
       return selected.syntax.matches;
     }
-    return [{ key: makeHash(), match: '', output: '' }];
+    return [{ id: makeHash(), match: '', output: '' }];
   }, [selected]);
 
   const [matches, setMatches] = useState(initialMatches);
@@ -100,9 +101,10 @@ const Input = (props: any) => {
   const { width: ww } = useWindowSize();
 
   const arrowPosition = useMemo(() => {
-    if (current !== undefined) {
-      if (refs && refs[current]) {
-        const { current: cc } = refs[current];
+    if (selected) {
+      const { index } = selected;
+      if (refs && refs[index]) {
+        const { current: cc } = refs[index];
         // TODO: Every times the text change, refs are created again
         // which make the current be destroyed
         if (cc) {
@@ -115,7 +117,7 @@ const Input = (props: any) => {
       }
     }
     return 0;
-  }, [cachePosition, current, refs, ww]);
+  }, [cachePosition, refs, selected, ww]);
 
   // const prevPosition = usePrevious(arrowPosition);
 
@@ -127,19 +129,17 @@ const Input = (props: any) => {
 
   // console.log({ arrowPosition, prevPosition });
 
-  const wordClick = useCallback((e: any, w: Word, i: number) => {
-    if (typeof onClick === 'function') {
-      onClick(e, w, i);
-    }
-    if (current === undefined || (selected && selected.key !== w.key)) {
-      setCurrent(i);
+  const wordClick = useCallback((e: any, w: Word) => {
+    onClick(e, w);
+    if (selected === undefined || (selected && selected.id !== w.id)) {
+      setSelected(w);
     } else {
-      setCurrent(undefined);
+      setSelected(undefined);
     }
-  }, [current, onClick, selected]);
+  }, [onClick, selected]);
 
   const handleMatches = (k: string, f: string, v: string) => {
-    const foundIndex = matches.findIndex((o: Match) => o.key === k);
+    const foundIndex = matches.findIndex((o: Match) => o.id === k);
     if (foundIndex > -1) {
       const tempMatches = [...matches];
       tempMatches.splice(foundIndex, 1, { ...matches[foundIndex], [f]: v });
@@ -147,7 +147,7 @@ const Input = (props: any) => {
     }
   };
 
-  const [isReady] = useDebounce(() => {
+  useDebounce(() => {
     const { key, match, output } = inputText;
     let oldMatch;
     const foundIndex = matches.findIndex((o: Match) => o.match === match);
@@ -160,37 +160,32 @@ const Input = (props: any) => {
     });
   }, 200, [inputText]);
 
-  console.log({ matches });
-
   const handleInputText = useCallback((e: any, k: string) => {
     setInputText({ ...inputText, [k]: e.target.value });
   }, [inputText]);
 
   const addBlankMatch = () => {
-    const { match, output } = matches[matches.length - 1];
-    console.log('asdfsadf', { match, output });
+    const { match } = matches[matches.length - 1];
     if (match) {
-      console.log('123');
       const tempMatches = [...matches];
-      console.log({ tempMatches });
       tempMatches.push({ key: makeHash(), match: '', output: '' });
       setMatches(tempMatches);
     }
-    console.log('adflll');
   };
 
   const prevSelected = usePrevious(selected);
 
   useEffect(() => {
-    if (prevSelected && selected && onChange) {
+    if (prevSelected && selected) {
       if (!isEqual(selected, prevSelected)) {
-        onChange(selected, words);
+        onSelect(selected);
+        // onChange(selected, words);
       }
     }
-  }, [onChange, prevSelected, selected, words]);
+  }, [onChange, onSelect, prevSelected, selected, words]);
 
   return matches.map((m: Match, i: number) => (
-    <Fragment key={m.key}>
+    <Fragment key={m.id}>
       <Row type="flex" align="middle" gutter={[10, 10]}>
         {!root && (
           <>
@@ -199,8 +194,7 @@ const Input = (props: any) => {
             </Col>
             <Col span={4}>
               <AntInput
-                // onChange={(e: any) => handleInputText(e, 'match')}
-                onChange={(e: any) => handleMatches(m.key, 'match', e.target.value)}
+                onChange={(e: any) => handleMatches(m.id, 'match', e.target.value)}
               />
             </Col>
             <Col span={2} offset={10}>
@@ -213,14 +207,17 @@ const Input = (props: any) => {
               </Checkbox>
             </Col>
             <Col span={3} style={{ textAlign: 'right' }}>
-              {matches.length - 1 === i && (
-              <Button
-                type="primary"
-                icon="plus"
-                onClick={addBlankMatch}
-              >
-                Add match
-              </Button>
+              {matches.length - 1 === i ? (
+                <Button
+                  type="primary"
+                  icon="plus"
+                  onClick={addBlankMatch}
+                />
+              ) : (
+                <Button
+                  icon="minus"
+                  onClick={() => {}}
+                />
               )}
             </Col>
           </>
@@ -245,13 +242,13 @@ const Input = (props: any) => {
       {(root || nested) && text && (
       <Row className="text" type="flex" align="middle" gutter={[10, 10]}>
         <Col span={24} offset={root ? 0 : 3}>
-          {words.map((w: Word, i: number) => (
+          {words.map((w: Word) => (
             <span
-              className={c('word', w.key, {
-                selected: selected && w.key === selected.key,
+              className={c('word', w.id, {
+                selected: selected && w.id === selected.id,
               })}
-              key={w.key}
-              onClick={(e) => wordClick(e, w, i)}
+              key={w.id}
+              onClick={(e: any) => wordClick(e, w)}
               ref={refs[w.index]}
               role="presentation"
             >
@@ -297,7 +294,7 @@ const Input = (props: any) => {
 
         <Input
           value={selected.sub}
-          onChange={(o: any) => setSub(o)}
+          onSelect={(o: Word) => setSub(o)}
         />
       </div>
       )}
@@ -308,13 +305,15 @@ const Input = (props: any) => {
 Input.PropsTypes = {
   onChange: PropTypes.func,
   onClick: PropTypes.func,
+  onSelect: PropTypes.func,
   root: PropTypes.bool,
   value: PropTypes.object,
 };
 
 Input.defaultProps = {
-  onChange: null,
-  onClick: null,
+  onChange: () => {},
+  onClick: () => {},
+  onSelect: () => {},
   root: false,
   value: undefined,
 };

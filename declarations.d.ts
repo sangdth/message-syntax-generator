@@ -1,5 +1,5 @@
 declare interface Match {
-  key: string
+  id: string
   match: string
   output: string
 }
@@ -12,7 +12,7 @@ declare interface Syntax {
 
 declare interface Word {
   index: number
-  key: string
+  id: string
   parent?: string
   sub?: Word
   syntax?: Syntax
