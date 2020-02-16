@@ -14,7 +14,7 @@ import {
   Row,
   Select,
 } from 'antd';
-import { usePrevious } from 'react-use';
+import { useWindowSize, usePrevious } from 'react-use';
 import { isEqual } from 'lodash';
 import PropTypes from 'prop-types';
 import c from 'classnames';
@@ -33,19 +33,9 @@ const Input = (props: any) => {
   const { onChange, onClick, root, value } = props;
 
   const [text, setText] = useState('');
-  const [selected, setSelected] = useState(value);
-
-  const initialNested = useMemo(
-    () => {
-      if (selected) {
-        return !!selected.sub;
-      }
-      return false;
-    },
-    [selected],
-  );
-
-  const [nested, setNested] = useState(initialNested);
+  const [current, setCurrent] = useState();
+  const [cachePosition, setCachedPosition] = useState();
+  const [sub, setSub] = useState(value ? value.sub : null);
 
   const words = useMemo(
     () => text.split(' ')
@@ -59,41 +49,78 @@ const Input = (props: any) => {
     [text],
   );
 
+  const selected = useMemo(
+    () => {
+      if (current !== undefined) {
+        return {
+          ...words[current],
+          sub,
+        };
+      }
+      return undefined;
+    },
+    [current, sub, words],
+  );
+
+  const initialNested = useMemo(
+    () => {
+      if (selected) {
+        return !!selected.sub;
+      }
+      return false;
+    },
+    [selected],
+  );
+
+  const [nested, setNested] = useState(initialNested);
+
   const refs = useMemo(
     () => words.map(() => createRef<HTMLSpanElement>()),
     [words],
   );
 
+  const { width: ww } = useWindowSize();
+
   const arrowPosition = useMemo(
     () => {
-      if (selected) {
-        const { index } = selected;
-        if (refs && refs[index]) {
-          const { current } = refs[index];
-          if (current) {
-            const { x, left, width } = current.getBoundingClientRect();
-            console.log({ x, left });
-            return left + width / 2 - 20;
+      if (current !== undefined) {
+        if (refs && refs[current]) {
+          const { current: cc } = refs[current];
+          if (cc) {
+            const { left: l, width: w } = cc.getBoundingClientRect();
+            return l - ((ww - 1080) / 2) + w / 2 - 20;
           }
         }
       }
       return 0;
     },
-    [refs, selected],
+    [current, refs, ww],
   );
 
+  // const prevPosition = usePrevious(arrowPosition);
+
+  useEffect(
+    () => {
+      if (arrowPosition) {
+        setCachedPosition(arrowPosition);
+      }
+    },
+    [arrowPosition],
+  );
+  // console.log({ arrowPosition, prevPosition });
+
   const wordClick = useCallback(
-    (event: any, word: Word) => {
+    (event: any, word: Word, i: number) => {
       if (typeof onClick === 'function') {
         onClick(event);
       }
-      if (!selected || selected.key !== word.key) {
-        setSelected(word);
+      if (current === undefined || (selected && selected.key !== word.key)) {
+        setCurrent(i);
       } else {
-        setSelected(undefined);
+        setCurrent(undefined);
       }
     },
-    [onClick, selected],
+    [current, onClick, selected],
   );
 
   const prevSelected = usePrevious(selected);
@@ -155,13 +182,13 @@ const Input = (props: any) => {
       {(root || nested) && text && (
       <Row className="text" type="flex" align="middle" gutter={[10, 10]}>
         <Col span={24} offset={root ? 0 : 3}>
-          {words.map((word: Word) => (
+          {words.map((word: Word, i: number) => (
             <span
               className={c('word', word.key, {
                 selected: selected && word.key === selected.key,
               })}
               key={word.key}
-              onClick={(event) => wordClick(event, word)}
+              onClick={(event) => wordClick(event, word, i)}
               ref={refs[word.index]}
               role="presentation"
             >
@@ -172,10 +199,10 @@ const Input = (props: any) => {
       </Row>
       )}
 
-      {(root || nested) && selected && (
+      {(root || nested) && selected && text && (
       <div className={c('actions', { root })}>
         {selected && (
-          <div className="my-arrow" style={{ left: arrowPosition }} />
+          <div className="my-arrow" style={{ left: arrowPosition || cachePosition }} />
         )}
 
         <Row type="flex" align="middle" gutter={[10, 10]}>
@@ -203,7 +230,7 @@ const Input = (props: any) => {
 
         <Input
           value={selected.sub}
-          onChange={(o: any) => setSelected({ ...selected, sub: o })}
+          onChange={(o: any) => setSub(o)}
         />
       </div>
       )}

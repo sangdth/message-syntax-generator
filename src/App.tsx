@@ -11,7 +11,7 @@ const App = () => (
     <h2>Message Syntax Generator</h2>
     <Input
       root
-      onChange={(o: any) => console.log({ o })}
+      // onChange={(o: any) => console.log({ o })}
     />
     <div className={c('select-area', 'block')} />
   </div>
