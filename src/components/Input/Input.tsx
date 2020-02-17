@@ -39,9 +39,10 @@ const Input = (props: any) => {
     onSelect,
     root,
     data,
+    value,
   } = props;
 
-  const [text, setText] = useState('');
+  const [text, setText] = useState(value);
   const [words, setWords] = useState([]);
   const [selected, setSelected] = useState();
   const [cachePosition, setCachedPosition] = useState();
@@ -116,6 +117,9 @@ const Input = (props: any) => {
       const tempMatches = [...matches];
       tempMatches.splice(foundIndex, 1, { ...matches[foundIndex], [f]: v });
       setMatches(tempMatches);
+      if (f === 'output') {
+        setText(v);
+      }
     }
   };
 
@@ -137,6 +141,7 @@ const Input = (props: any) => {
   const handleNestedMatch = (m: Match, s: boolean) => {
     if (s && !m.subData) {
       setMatches(updateArray(matches, { ...m, subData: [] }, 'id'));
+      setText(m.output);
     } else {
       setMatches(updateArray(matches, { ...m, subData: null }, 'id'));
     }
@@ -174,8 +179,6 @@ const Input = (props: any) => {
         })));
     }
   }, 250, [text]);
-
-  console.log({ matches });
 
   return matches.map((m: Match, i: number) => (
     <Fragment key={m.id}>
@@ -228,15 +231,9 @@ const Input = (props: any) => {
         <Col span={root ? 24 : 19}>
           <AntInput
             disabled={lock}
-            value={root ? text : m.output}
+            value={text}
             size={root ? 'large' : undefined}
-            onChange={(e: any) => {
-              if (root) {
-                setText(e.target.value);
-              } else {
-                handleMatches(m.id, 'output', e.target.value);
-              }
-            }}
+            onChange={(e: any) => setText(e.target.value)}
           />
         </Col>
       </Row>
@@ -299,6 +296,8 @@ const Input = (props: any) => {
         </Row>
 
         <Input
+          value={m.output}
+          data={m.subData}
           onSelect={(w: Word) => onSubSelect(w)}
         />
       </div>
@@ -314,6 +313,7 @@ Input.PropsTypes = {
   onSelect: PropTypes.func,
   root: PropTypes.bool,
   data: PropTypes.array,
+  value: PropTypes.string,
 };
 
 Input.defaultProps = {
@@ -323,6 +323,7 @@ Input.defaultProps = {
   onSelect: () => {},
   root: false,
   data: [],
+  value: '',
 };
 
 export default Input;
