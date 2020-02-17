@@ -2,6 +2,7 @@ declare interface Match {
   id: string
   match: string
   output: string
+  subData?: Word[]
 }
 
 declare interface Syntax {
@@ -13,8 +14,6 @@ declare interface Syntax {
 declare interface Word {
   index: number
   id: string
-  parent?: string
-  sub?: Word
   syntax?: Syntax
   value: string
 }

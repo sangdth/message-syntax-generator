@@ -18,11 +18,15 @@ import {
 import {
   useDebounce,
   useWindowSize,
-  usePrevious,
+  // usePrevious,
 } from 'react-use';
-import { isEqual } from 'lodash';
+// import { isEqual } from 'lodash';
 import PropTypes from 'prop-types';
 import c from 'classnames';
+import {
+  makeHash,
+  updateArray,
+} from '../../helpers';
 import './styles.scss';
 
 const { Option } = Select;
@@ -30,75 +34,47 @@ const { Option } = Select;
 const Input = (props: any) => {
   const {
     onChange,
+    onChangeText,
     onClick,
     onSelect,
     root,
-    value,
+    data,
   } = props;
-
-  const makeHash = () => Math.random().toString(36).slice(-9);
-
-  const initialSyntax = useMemo(() => {
-    if (value && value.syntax) {
-      return value.syntax;
-    }
-    return [{ key: '', type: 'none', matches: [] }];
-  }, [value]);
-
-  const initialInputText = {
-    match: '',
-    key: '',
-    output: '',
-  };
 
   const [text, setText] = useState('');
   const [words, setWords] = useState([]);
-  const [inputText, setInputText] = useState(initialInputText);
   const [selected, setSelected] = useState();
   const [cachePosition, setCachedPosition] = useState();
-  const [sub, setSub] = useState(value ? value.sub : null);
-  const [syntax, setSyntax] = useState(initialSyntax);
+  const [key, setKey] = useState('');
+  const [type, setType] = useState('none');
+  const [lock, setLock] = useState(false);
 
-  useEffect(() => {
-    if (!text) {
-      setSelected(undefined);
+  const foundSelected = useMemo(() => {
+    if (selected) {
+      return data.find((o: any) => o.id === selected.id);
     }
-  }, [text]);
+    return undefined;
+  }, [data, selected]);
 
-  useDebounce(() => {
-    setWords(text.split(' ')
-      .filter((s: string) => s)
-      .map((s: string, i: number) => ({
-        index: i,
-        id: `${makeHash()}`,
-        value: s,
-      })));
-  }, 350, [text]);
-
+  // From data, if we had a syntax, get the matches from it
   const initialMatches = useMemo(() => {
-    if (selected && selected.syntax) {
-      return selected.syntax.matches;
+    if (foundSelected && foundSelected.syntax) {
+      return foundSelected.syntax.matches;
     }
     return [{ id: makeHash(), match: '', output: '' }];
-  }, [selected]);
+  }, [foundSelected]);
 
   const [matches, setMatches] = useState(initialMatches);
 
-  const initialNested = useMemo(() => {
-    if (selected) {
-      return !!selected.sub;
-    }
-    return false;
-  }, [selected]);
+  const { width: ww } = useWindowSize();
 
-  const [nested, setNested] = useState(initialNested);
-
+  /*
+   * Computed variables
+   */
   const refs = useMemo(
     () => words.map(() => createRef<HTMLSpanElement>()),
     [words],
   );
-
-  const { width: ww } = useWindowSize();
 
   const arrowPosition = useMemo(() => {
     if (selected) {
@@ -119,27 +95,23 @@ const Input = (props: any) => {
     return 0;
   }, [cachePosition, refs, selected, ww]);
 
-  // const prevPosition = usePrevious(arrowPosition);
-
-  useEffect(() => {
-    if (arrowPosition) {
-      setCachedPosition(arrowPosition);
-    }
-  }, [arrowPosition]);
-
-  // console.log({ arrowPosition, prevPosition });
-
+  /*
+   * Callback, functions
+   */
   const wordClick = useCallback((e: any, w: Word) => {
     onClick(e, w);
     if (selected === undefined || (selected && selected.id !== w.id)) {
       setSelected(w);
+      onSelect(w);
+      setLock(true);
     } else {
       setSelected(undefined);
+      setLock(false);
     }
-  }, [onClick, selected]);
+  }, [onClick, onSelect, selected]);
 
-  const handleMatches = (k: string, f: string, v: string) => {
-    const foundIndex = matches.findIndex((o: Match) => o.id === k);
+  const handleMatches = (i: string, f: string, v: string) => {
+    const foundIndex = matches.findIndex((o: Match) => o.id === i);
     if (foundIndex > -1) {
       const tempMatches = [...matches];
       tempMatches.splice(foundIndex, 1, { ...matches[foundIndex], [f]: v });
@@ -147,42 +119,63 @@ const Input = (props: any) => {
     }
   };
 
-  useDebounce(() => {
-    const { key, match, output } = inputText;
-    let oldMatch;
-    const foundIndex = matches.findIndex((o: Match) => o.match === match);
-    if (foundIndex > -1) {
-      oldMatch = matches[foundIndex];
-    }
-    setSyntax({
-      ...syntax,
-      key,
-    });
-  }, 200, [inputText]);
-
-  const handleInputText = useCallback((e: any, k: string) => {
-    setInputText({ ...inputText, [k]: e.target.value });
-  }, [inputText]);
+  const onSubSelect = (w: Word) => {
+    // setSub(w);
+    setSelected({ ...selected, sub: w });
+    onSelect({ ...selected, sub: w });
+  };
 
   const addBlankMatch = () => {
     const { match } = matches[matches.length - 1];
     if (match) {
       const tempMatches = [...matches];
-      tempMatches.push({ key: makeHash(), match: '', output: '' });
+      tempMatches.push({ id: makeHash(), match: '', output: '' });
       setMatches(tempMatches);
     }
   };
 
-  const prevSelected = usePrevious(selected);
+  const handleNestedMatch = (m: Match, s: boolean) => {
+    if (s && !m.subData) {
+      setMatches(updateArray(matches, { ...m, subData: [] }, 'id'));
+    } else {
+      setMatches(updateArray(matches, { ...m, subData: null }, 'id'));
+    }
+  };
+
+  /*
+   * Handling side effects
+   */
+  useEffect(() => {
+    if (arrowPosition) {
+      setCachedPosition(arrowPosition);
+    }
+  }, [arrowPosition]);
+
+  useDebounce(() => {
+  }, 250, []);
 
   useEffect(() => {
-    if (prevSelected && selected) {
-      if (!isEqual(selected, prevSelected)) {
-        onSelect(selected);
-        // onChange(selected, words);
-      }
+    if (!text) {
+      onChangeText('');
+      setSelected(undefined);
+      setWords([]);
     }
-  }, [onChange, onSelect, prevSelected, selected, words]);
+  }, [onChangeText, text]);
+
+  useDebounce(() => {
+    if (text) {
+      onChangeText(text);
+      setWords(text.split(' ')
+        .filter((s: string) => s)
+        .map((s: string, i: number) => ({
+          id: `${makeHash()}`,
+          index: i,
+          value: s,
+        })));
+    }
+  }, 250, [text]);
+
+  console.log({ matches });
 
   return matches.map((m: Match, i: number) => (
     <Fragment key={m.id}>
@@ -194,14 +187,15 @@ const Input = (props: any) => {
             </Col>
             <Col span={4}>
               <AntInput
+                value={m.match}
                 onChange={(e: any) => handleMatches(m.id, 'match', e.target.value)}
               />
             </Col>
             <Col span={2} offset={10}>
               <Checkbox
-                checked={nested}
+                checked={!!m.subData}
                 className="checkbox"
-                onChange={(e: any) => setNested(e.target.checked)}
+                onChange={(e: any) => handleNestedMatch(m, e.target.checked)}
               >
                 Nested
               </Checkbox>
@@ -209,6 +203,7 @@ const Input = (props: any) => {
             <Col span={3} style={{ textAlign: 'right' }}>
               {matches.length - 1 === i ? (
                 <Button
+                  disabled={!m.match}
                   type="primary"
                   icon="plus"
                   onClick={addBlankMatch}
@@ -232,14 +227,21 @@ const Input = (props: any) => {
         )}
         <Col span={root ? 24 : 19}>
           <AntInput
-            value={text}
+            disabled={lock}
+            value={root ? text : m.output}
             size={root ? 'large' : undefined}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e: any) => {
+              if (root) {
+                setText(e.target.value);
+              } else {
+                handleMatches(m.id, 'output', e.target.value);
+              }
+            }}
           />
         </Col>
       </Row>
 
-      {(root || nested) && text && (
+      {(root || !!m.subData) && text && (
       <Row className="text" type="flex" align="middle" gutter={[10, 10]}>
         <Col span={24} offset={root ? 0 : 3}>
           {words.map((w: Word) => (
@@ -259,7 +261,7 @@ const Input = (props: any) => {
       </Row>
       )}
 
-      {(root || nested) && selected && text && (
+      {(root || !!m.subData) && selected && text && (
       <div className={c('actions', { root })}>
         {selected && (
           <div className="my-arrow" style={{ left: arrowPosition }} />
@@ -270,7 +272,10 @@ const Input = (props: any) => {
             Key:
           </Col>
           <Col span={4}>
-            <AntInput onChange={(e: any) => handleInputText(e, 'key')} />
+            <AntInput
+              value={key}
+              onChange={(e: any) => setKey(e.target.value)}
+            />
           </Col>
 
           <Col span={2} offset={1} className="label-col">
@@ -280,7 +285,8 @@ const Input = (props: any) => {
             <Select
               className="select-options"
               defaultValue="none"
-              onChange={(v: string) => setSyntax({ ...syntax, type: v })}
+              value={type}
+              onChange={(t: string) => setType(t)}
             >
               <Option value="none"> – </Option>
               <Option value="date">Date</Option>
@@ -293,8 +299,7 @@ const Input = (props: any) => {
         </Row>
 
         <Input
-          value={selected.sub}
-          onSelect={(o: Word) => setSub(o)}
+          onSelect={(w: Word) => onSubSelect(w)}
         />
       </div>
       )}
@@ -304,18 +309,20 @@ const Input = (props: any) => {
 
 Input.PropsTypes = {
   onChange: PropTypes.func,
+  onChangeText: PropTypes.func,
   onClick: PropTypes.func,
   onSelect: PropTypes.func,
   root: PropTypes.bool,
-  value: PropTypes.object,
+  data: PropTypes.array,
 };
 
 Input.defaultProps = {
   onChange: () => {},
+  onChangeText: () => {},
   onClick: () => {},
   onSelect: () => {},
   root: false,
-  value: undefined,
+  data: [],
 };
 
 export default Input;

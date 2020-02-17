@@ -11,6 +11,7 @@ const App = () => (
     <h2>Message Syntax Generator</h2>
     <Input
       root
+      onSelect={(o: Word) => console.log('onSelect', { o })}
       onChange={(o: any) => console.log({ o })}
     />
     <div className={c('select-area', 'block')} />

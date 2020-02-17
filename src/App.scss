@@ -1,8 +1,8 @@
 @import '~antd/dist/antd.css';
 
-$bgColor: #FFF;
-$borderColor: #DDD;
-$textColor: #333;
+$bgColor: #333;
+$borderColor: #999;
+$textColor: #CCC;
 $selectedBorder: #52c41a;
 
 body {
@@ -22,6 +22,11 @@ h2 {
   margin: 0 auto;
   padding: 20px;
   width: 1080px;
+}
+
+.ant-input {
+  color: $textColor;
+  background: lighten($bgColor, 10%);
 }
 
 .select-options {
