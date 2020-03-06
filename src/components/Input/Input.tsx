@@ -15,6 +15,7 @@ import {
   Row,
   Select,
 } from 'antd';
+import { isEqual } from 'lodash';
 import {
   useDebounce,
   useWindowSize,
@@ -23,165 +24,140 @@ import {
 // import { isEqual } from 'lodash';
 import PropTypes from 'prop-types';
 import c from 'classnames';
-import {
-  makeHash,
-  updateArray,
-} from '../../helpers';
+// import { makeHash, updateArray } from '../../helpers';
 import './styles.scss';
 
 const { Option } = Select;
+const syntaxTypes = ['date', 'time', 'number', 'plural', 'select', 'selectordinal'];
 
 const Input = (props: any) => {
   const {
-    onChange,
-    onChangeText,
-    onClick,
-    onSelect,
+    // onChange,
     root,
-    data,
-    value,
+    output,
   } = props;
 
-  const [text, setText] = useState(value);
-  const [words, setWords] = useState([]);
-  const [selected, setSelected] = useState();
-  const [cachePosition, setCachedPosition] = useState();
-  const [key, setKey] = useState('');
-  const [type, setType] = useState('none');
+  const { width: windowWidth } = useWindowSize();
+
+  const [text, setText] = useState(output.value);
+  const [syntaxes, setSyntaxes] = useState<Syntax[]>(output.syntaxes);
+
+  const [words, setWords] = useState<Word[]>([]);
+  const [selected, setSelected] = useState<Word>(null);
+
+  const initial = useMemo(() => {
+    if (selected) {
+      const found = syntaxes.find((s: Syntax) => isEqual(s.word, selected));
+      if (found) {
+        return {
+          key: found.key,
+          type: found.type,
+          matches: found.matches,
+        };
+      }
+    }
+    return { key: '', type: '', matches: [{ match: '' }] };
+  }, [selected, syntaxes]);
+
+  const [key, setKey] = useState(initial.key);
+  const [type, setType] = useState(initial.type);
+  const [matches, setMatches] = useState(initial.matches);
   const [lock, setLock] = useState(false);
 
-  const foundSelected = useMemo(() => {
-    if (selected) {
-      return data.find((o: any) => o.id === selected.id);
-    }
-    return undefined;
-  }, [data, selected]);
 
-  // From data, if we had a syntax, get the matches from it
-  const initialMatches = useMemo(() => {
-    if (foundSelected && foundSelected.syntax) {
-      return foundSelected.syntax.matches;
-    }
-    return [{ id: makeHash(), match: '', output: '' }];
-  }, [foundSelected]);
-
-  const [matches, setMatches] = useState(initialMatches);
-
-  const { width: ww } = useWindowSize();
-
-  /*
+  /* -------------------------------------------------------------------
    * Computed variables
    */
-  const refs = useMemo(
-    () => words.map(() => createRef<HTMLSpanElement>()),
-    [words],
-  );
+  const refs = useMemo(() => words.map(() => createRef<HTMLSpanElement>()), [words]);
 
   const arrowPosition = useMemo(() => {
     if (selected) {
       const { index } = selected;
-      if (refs && refs[index]) {
-        const { current: cc } = refs[index];
-        // TODO: Every times the text change, refs are created again
-        // which make the current be destroyed
-        if (cc) {
-          const { left: l, width: w } = cc.getBoundingClientRect();
-          return l - ((ww - 1080) / 2) + w / 2 - 20;
-        }
-        // TODO: this is a hacky way to keep the arrow at position
-        // the correct way is preserving the ref of word
-        return cachePosition;
+      if (refs && refs[index] && refs[index].current) {
+        const { left, width } = refs[index].current.getBoundingClientRect();
+        return left - ((windowWidth - 1080) / 2) + width / 2 - 20;
       }
     }
     return 0;
-  }, [cachePosition, refs, selected, ww]);
+  }, [refs, selected, windowWidth]);
 
-  /*
+  /* -------------------------------------------------------------------
    * Callback, functions
    */
-  const wordClick = useCallback((e: any, w: Word) => {
-    onClick(e, w);
-    if (selected === undefined || (selected && selected.id !== w.id)) {
-      setSelected(w);
-      onSelect(w);
+  const wordClick = useCallback((word: Word) => {
+    if (!selected || (selected && selected.index !== word.index)) {
+      setSelected(word);
       setLock(true);
     } else {
-      setSelected(undefined);
+      setSelected(null);
       setLock(false);
     }
-  }, [onClick, onSelect, selected]);
+  }, [selected]);
 
-  const handleMatches = (i: string, f: string, v: string) => {
-    const foundIndex = matches.findIndex((o: Match) => o.id === i);
-    if (foundIndex > -1) {
-      const tempMatches = [...matches];
-      tempMatches.splice(foundIndex, 1, { ...matches[foundIndex], [f]: v });
-      setMatches(tempMatches);
-      if (f === 'output') {
-        setText(v);
-      }
-    }
-  };
-
-  const onSubSelect = (w: Word) => {
-    // setSub(w);
-    setSelected({ ...selected, sub: w });
-    onSelect({ ...selected, sub: w });
-  };
-
-  const addBlankMatch = () => {
-    const { match } = matches[matches.length - 1];
-    if (match) {
-      const tempMatches = [...matches];
-      tempMatches.push({ id: makeHash(), match: '', output: '' });
-      setMatches(tempMatches);
-    }
-  };
-
-  const handleNestedMatch = (m: Match, s: boolean) => {
-    if (s && !m.subData) {
-      setMatches(updateArray(matches, { ...m, subData: [] }, 'id'));
-      setText(m.output);
-    } else {
-      setMatches(updateArray(matches, { ...m, subData: null }, 'id'));
-    }
-  };
-
-  /*
+  /* -------------------------------------------------------------------
    * Handling side effects
    */
-  useEffect(() => {
-    if (arrowPosition) {
-      setCachedPosition(arrowPosition);
-    }
-  }, [arrowPosition]);
-
-  useDebounce(() => {
-  }, 250, []);
-
-  useEffect(() => {
-    if (!text) {
-      onChangeText('');
-      setSelected(undefined);
-      setWords([]);
-    }
-  }, [onChangeText, text]);
-
   useDebounce(() => {
     if (text) {
-      onChangeText(text);
       setWords(text.split(' ')
-        .filter((s: string) => s)
-        .map((s: string, i: number) => ({
-          id: `${makeHash()}`,
-          index: i,
-          value: s,
+        .filter((word: string) => word)
+        .map((value: string, index: number) => ({
+          index,
+          value,
         })));
     }
   }, 250, [text]);
 
-  return matches.map((m: Match, i: number) => (
-    <Fragment key={m.id}>
+  useDebounce(() => {
+    if (key && type !== '') {
+      const newSyntax: Syntax = {
+        key,
+        type,
+        matches,
+        word: selected,
+      };
+
+      const tmp = syntaxes.filter((s: Syntax) => words.find((w: Word) => isEqual(s.word, w)));
+      const index = tmp.findIndex((s: Syntax) => isEqual(s.word, selected));
+
+      if (index > -1) {
+        tmp.splice(index, 1, newSyntax);
+      } else {
+        tmp.push(newSyntax);
+      }
+
+      setSyntaxes(tmp);
+    }
+  }, 250, [key, type]);
+
+  useEffect(() => {
+    if (selected) {
+      const found = syntaxes.find((s: Syntax) => isEqual(s.word, selected));
+      if (found) {
+        setKey(found.key);
+        setType(found.type);
+        setMatches(found.matches);
+      } else {
+        setKey('');
+        setType('');
+        setMatches([{ match: '' }]);
+      }
+    }
+  }, [selected, syntaxes]);
+
+  useEffect(() => {
+    if (!text) {
+      setSelected(null);
+      setWords([]);
+    }
+  }, [text]);
+
+  console.log({ syntaxes });
+
+  /* -------------------------------------------------------------------
+   * Rendering
+  return matches.map((match: Match, index: number) => (
+    <Fragment key={match.match}>
       <Row type="flex" align="middle" gutter={[10, 10]}>
         {!root && (
           <>
@@ -190,7 +166,7 @@ const Input = (props: any) => {
             </Col>
             <Col span={4}>
               <AntInput
-                value={m.match}
+                value={match.match}
                 onChange={(e: any) => handleMatches(m.id, 'match', e.target.value)}
               />
             </Col>
@@ -221,7 +197,15 @@ const Input = (props: any) => {
           </>
         )}
       </Row>
+          <Input
+            root={false}
+            output={format.output}
+            onChange={() => {}}
+          />
 
+   */
+  return (
+    <>
       <Row type="flex" align="middle" gutter={[10, 10]}>
         {!root && (
           <Col span={2} offset={1} className="label-col">
@@ -238,27 +222,27 @@ const Input = (props: any) => {
         </Col>
       </Row>
 
-      {(root || !!m.subData) && text && (
+      {text && (
       <Row className="text" type="flex" align="middle" gutter={[10, 10]}>
         <Col span={24} offset={root ? 0 : 3}>
-          {words.map((w: Word) => (
+          {words.map((word: Word) => (
             <span
-              className={c('word', w.id, {
-                selected: selected && w.id === selected.id,
+              className={c('word', word.value, {
+                selected: selected && word.index === selected.index,
               })}
-              key={w.id}
-              onClick={(e: any) => wordClick(e, w)}
-              ref={refs[w.index]}
+              key={word.index}
+              onClick={() => wordClick(word)}
+              ref={refs[word.index]}
               role="presentation"
             >
-              {w.value}
+              {word.value}
             </span>
           ))}
         </Col>
       </Row>
       )}
 
-      {(root || !!m.subData) && selected && text && (
+      {selected && (
       <div className={c('actions', { root })}>
         {selected && (
           <div className="my-arrow" style={{ left: arrowPosition }} />
@@ -271,7 +255,7 @@ const Input = (props: any) => {
           <Col span={4}>
             <AntInput
               value={key}
-              onChange={(e: any) => setKey(e.target.value)}
+              onChange={(event: any) => setKey(event.target.value)}
             />
           </Col>
 
@@ -281,49 +265,29 @@ const Input = (props: any) => {
           <Col span={4}>
             <Select
               className="select-options"
-              defaultValue="none"
+              defaultValue=""
               value={type}
-              onChange={(t: string) => setType(t)}
+              onChange={(syntaxType: string) => setType(syntaxType)}
             >
-              <Option value="none"> – </Option>
-              <Option value="date">Date</Option>
-              <Option value="number">Number</Option>
-              <Option value="plural">Plural</Option>
-              <Option value="select">Select</Option>
-              <Option value="selectordinal">Select Ordinal</Option>
+              <Option value=""> – </Option>
+              {syntaxTypes.map((syntaxType: string) => (
+                <Option key={syntaxType} value={syntaxType}>
+                  {syntaxType}
+                </Option>
+              ))}
             </Select>
           </Col>
         </Row>
-
-        <Input
-          value={m.output}
-          data={m.subData}
-          onSelect={(w: Word) => onSubSelect(w)}
-        />
       </div>
       )}
-    </Fragment>
-  ));
+    </>
+  );
 };
 
 Input.PropsTypes = {
-  onChange: PropTypes.func,
-  onChangeText: PropTypes.func,
-  onClick: PropTypes.func,
-  onSelect: PropTypes.func,
-  root: PropTypes.bool,
-  data: PropTypes.array,
-  value: PropTypes.string,
-};
-
-Input.defaultProps = {
-  onChange: () => {},
-  onChangeText: () => {},
-  onClick: () => {},
-  onSelect: () => {},
-  root: false,
-  data: [],
-  value: '',
+  onChange: PropTypes.func.isRequired,
+  root: PropTypes.bool.isRequired,
+  output: PropTypes.object.isRequired,
 };
 
 export default Input;
