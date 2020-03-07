@@ -1,4 +1,5 @@
 declare interface Word {
+  id: string
   index: number
   value: string
 }

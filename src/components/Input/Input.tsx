@@ -36,17 +36,17 @@ const Input = (props: any) => {
   const {
     onChange,
     root,
-    output,
+    match,
   } = props;
 
   const { width: windowWidth } = useWindowSize();
 
-  const [syntaxes, setSyntaxes] = useState<Syntax[]>(output.syntaxes || []);
+  const [syntaxes, setSyntaxes] = useState<Syntax[]>(match.output.syntaxes || []);
 
-  const [words, setWords] = useState({});
   const [selected, setSelected] = useState<Word>(null);
 
   const initial = useMemo(() => {
+    const id = makeHash();
     if (selected) {
       const found = syntaxes.find((s: Syntax) => isEqual(s.word, selected));
       if (found) {
@@ -54,18 +54,17 @@ const Input = (props: any) => {
           key: found.key,
           type: found.type,
           matches: found.matches,
-          inputs: found.matches.reduce((o: any, e: any, i: number) => ({
+          inputs: found.matches.reduce((o: any, m: Match) => ({
             ...o,
-            [i]: e.match,
+            [m.id]: m.match,
           }), {}),
-          texts: found.matches.reduce((o: any, m: Match) => ({
+          outputs: found.matches.reduce((o: any, m: Match) => ({
             ...o,
             [m.id]: m.output.value,
           }), {}),
         };
       }
     }
-    const id = makeHash();
     return {
       key: '',
       type: '',
@@ -74,27 +73,21 @@ const Input = (props: any) => {
         match: '',
         output: { value: '' },
       }],
-      inputs: {},
-      texts: { [id]: '' },
+      inputs: { [id]: '' },
+      outputs: { [id]: '' },
     };
   }, [selected, syntaxes]);
 
-  const [texts, setTexts] = useState(initial.texts);
+  const [text, setText] = useState(match.output.value);
+  const [outputs, setOutputs] = useState(initial.outputs);
+  const [words, setWords] = useState([]);
   const [key, setKey] = useState(initial.key);
   const [type, setType] = useState(initial.type);
   const [matches, setMatches] = useState(initial.matches);
   const [lock, setLock] = useState(false);
   const [matchInputs, setMatchInputs] = useState(initial.inputs);
 
-  console.log({ matches });
-
-  const refs = useMemo(
-    () => Object.keys(words).reduce((o: any, id: string) => ({
-      ...o,
-      [id]: words[id].map(() => createRef<HTMLSpanElement>()),
-    }), {}),
-    [words],
-  );
+  const refs = useMemo(() => words.map(() => createRef<HTMLSpanElement>()), [words]);
 
   /* -------------------------------------------------------------------
    * Computed variables
@@ -113,40 +106,62 @@ const Input = (props: any) => {
   /* -------------------------------------------------------------------
    * Callback, functions
    */
-  const wordClick = useCallback((word: Word, id: string) => {
+  const wordClick = useCallback((word: Word) => {
     if (!selected || (selected && selected.index !== word.index)) {
       setSelected(word);
+      const found = syntaxes.find((s: Syntax) => isEqual(s.word, word));
+      // If syntax does not exist, generate one
+      if (!found) {
+        setSyntaxes([...syntaxes, {
+          key: '',
+          type: '',
+          matches,
+          word,
+        }]);
+      }
       setLock(true);
     } else {
       setSelected(null);
       setLock(false);
     }
-  }, [selected]);
+  }, [matches, selected, syntaxes]);
 
-  const setOutput = useCallback((out: Output, index: number) => {
+  const setMatch = useCallback((m: Match, i: number) => {
     const tmpMatches = [...matches];
-    tmpMatches.splice(index, 1, { ...matches[index], output: out });
+    console.log('set sub match: ', match.id, match);
+    tmpMatches.splice(i, 1, m);
     setMatches(tmpMatches);
-  }, [matches]);
+  }, [match, matches]);
 
   /* -------------------------------------------------------------------
    * Handling side effects
    */
   useDebounce(() => {
-    const ids = Object.keys(texts);
-    if (ids.length > 0) {
-      const wordsObject = ids.reduce((o: any, id: string) => ({
-        ...o,
-        [id]: texts[id].split(' ')
-          .filter((word: string) => word)
-          .map((value: string, index: number) => ({
-            index,
-            value,
-          })),
-      }), {});
+    if (text.length > 0) {
+      const wordsObject = text.split(' ')
+        .filter((word: string) => word)
+        .map((value: string, index: number) => ({
+          id: match.id,
+          ref: createRef<HTMLSpanElement>(),
+          index,
+          value,
+        }));
       setWords(wordsObject);
     }
-  }, 250, [texts]);
+    onChange({ ...match, output: { ...match.output, value: text } });
+  }, 250, [text]);
+
+  /*
+  const ids = Object.keys(outputs);
+  if (ids.length > 0) {
+  const wordsObject = ids.reduce((o: any, id: string) => ({
+    ...o,
+    [id]: outputs[id].split(' ')
+      .filter((word: string) => word)
+      .map((value: string, index: number) => ({ id, index, value })),
+  }), {});
+  setWords(wordsObject);
+  */
 
   useDebounce(() => {
     if (key && type !== '') {
@@ -157,7 +172,6 @@ const Input = (props: any) => {
         word: selected,
       };
 
-      /*
       const tmp = syntaxes.filter((s: Syntax) => words.find((w: Word) => isEqual(s.word, w)));
       const index = tmp.findIndex((s: Syntax) => isEqual(s.word, selected));
 
@@ -168,16 +182,16 @@ const Input = (props: any) => {
       }
 
       setSyntaxes(tmp);
-       */
     }
   }, 250, [key, type, matches]);
 
   const prevMatchInputs = usePrevious(matchInputs);
+
   useEffect(() => {
     if (Object.keys(matchInputs).length > 0 && !isEqual(matchInputs, prevMatchInputs)) {
-      setMatches((matches as Array<Match>).map((match: Match) => ({
-        ...match,
-        match: matchInputs[match.id],
+      setMatches((matches as Array<Match>).map((m: Match) => ({
+        ...m,
+        match: matchInputs[m.id],
       })));
     }
   }, [matchInputs, matches, prevMatchInputs]);
@@ -202,16 +216,15 @@ const Input = (props: any) => {
   }, [selected, syntaxes]);
 
   useEffect(() => {
-    if (Object.keys(texts).length === 0) {
+    if (Object.keys(outputs).length === 0) {
       setSelected(null);
-      setWords({});
+      setWords([]);
     }
-  }, [texts]);
+  }, [outputs]);
 
   /* -------------------------------------------------------------------
    * Rendering
    */
-  console.log({ ...matchInputs });
 
   return (
     <>
@@ -224,7 +237,7 @@ const Input = (props: any) => {
             {!root && (
               <>
                 <Col span={2} offset={1} className="label-col">
-                  Match:
+                  Match #{index}
                 </Col>
                 <Col span={4}>
                   <AntInput
@@ -238,7 +251,7 @@ const Input = (props: any) => {
 
                 <Col span={2} offset={11}>
                   <Checkbox
-                    checked={!!match.output.syntaxes}
+                    checked
                     className="checkbox"
                   >
                     Nested
@@ -278,38 +291,48 @@ const Input = (props: any) => {
           <Row type="flex" align="middle" gutter={[10, 10]}>
             {!root && ( // output label, except the root
             <Col span={2} offset={1} className="label-col">
-              Output:
+              Output
             </Col>
             )}
             <Col span={root ? 24 : 19}>
               <AntInput
                 disabled={lock}
-                value={texts[match.id]}
                 size={root ? 'large' : undefined}
-                onChange={(e: any) => setTexts({ ...texts, [match.id]: e.target.value })}
+                value={root ? text : outputs[match.id]}
+                onChange={(e: any) => (root
+                  ? setText(e.target.value)
+                  : setOutputs({
+                    ...outputs,
+                    [match.id]: e.target.value,
+                  }))}
               />
             </Col>
           </Row>
 
-          {Object.keys(texts).length > 0 && (
           <Row className="text" type="flex" align="middle" gutter={[10, 10]}>
             <Col span={24} offset={root ? 0 : 3}>
-              {words[match.id] && words[match.id].map((word: Word) => (
-                <span
-                  className={c('word', word.value, {
-                    selected: selected && word.index === selected.index,
-                  })}
-                  key={word.index}
-                  onClick={() => wordClick(word, match.id)}
-                  ref={refs[match.id][word.index]}
-                  role="presentation"
-                >
-                  {word.value}
-                </span>
+              {(root ? words : outputs[match.id].split(' ')
+                .filter((word: string) => word)
+                .map((value: string, index: number) => ({
+                  id: match.id,
+                  ref: createRef<HTMLSpanElement>(),
+                  index,
+                  value,
+                }))).map((word: Word) => (
+                  <span
+                    className={c('word', word.value, {
+                      selected: selected && word.index === selected.index,
+                    })}
+                    key={word.index}
+                    onClick={() => wordClick(word)}
+                    ref={refs[word.index]}
+                    role="presentation"
+                  >
+                    {word.value}
+                  </span>
               ))}
             </Col>
           </Row>
-          )}
 
           {(root || !!match.output) && selected && (
           <div className={c('actions', { root })}>
@@ -319,7 +342,7 @@ const Input = (props: any) => {
 
             <Row type="flex" align="middle" gutter={[10, 10]}>
               <Col span={2} offset={1} className="label-col">
-                Key:
+                Key
               </Col>
               <Col span={4}>
                 <AntInput
@@ -329,7 +352,7 @@ const Input = (props: any) => {
               </Col>
 
               <Col span={2} offset={1} className="label-col">
-                Type:
+                Type
               </Col>
               <Col span={4}>
                 <Select
@@ -348,12 +371,13 @@ const Input = (props: any) => {
               </Col>
             </Row>
 
+            right before
             {match.output && (
-              <Input
-                root={false}
-                output={match.output}
-                onChange={(out: Output) => setOutput(out, index)}
-              />
+            <Input
+              root={false}
+              match={match}
+              onChange={(m: Match) => setMatch(m, index)}
+            />
             )}
           </div>
           )}
@@ -366,7 +390,7 @@ const Input = (props: any) => {
 Input.PropsTypes = {
   onChange: PropTypes.func.isRequired,
   root: PropTypes.bool.isRequired,
-  output: PropTypes.object.isRequired,
+  match: PropTypes.object.isRequired,
 };
 
 export default Input;

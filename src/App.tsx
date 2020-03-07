@@ -7,12 +7,16 @@ import Input from './components/Input';
 import './App.scss';
 
 const App = () => {
-  const [output, setOutput] = useState<Output>({
-    value: '',
-    syntaxes: [],
+  const [match, setMatch] = useState<Match>({
+    id: 'root',
+    match: '',
+    output: {
+      value: '',
+      syntaxes: [],
+    },
   });
 
-  console.log('# Main output: ', { output });
+  console.log('# Main match: ', { match });
 
   return (
     <div className="App">
@@ -20,8 +24,8 @@ const App = () => {
 
       <Input
         root
-        output={output}
-        onChange={(out: Output) => setOutput(out)}
+        match={match}
+        onChange={(m: Match) => setMatch(m)}
       />
       <div className={c('select-area', 'block')} />
     </div>
