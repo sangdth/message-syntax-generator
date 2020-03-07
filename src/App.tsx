@@ -12,6 +12,8 @@ const App = () => {
     syntaxes: [],
   });
 
+  console.log('# Main output: ', { output });
+
   return (
     <div className="App">
       <h2>Message Syntax Generator</h2>

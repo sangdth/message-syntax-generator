@@ -36,6 +36,11 @@ h2 {
 .checkbox {
   color: $textColor;
 }
+
+.divider {
+  background: $borderColor;
+}
+
 .text {
   margin-top: 10px;
   color: $textColor;
@@ -74,7 +79,7 @@ h2 {
   border-left-width: 0;
   border-right-width: 0;
 
-  padding-top: 10px;
+  padding-top: 20px;
   margin-top: 10px;
 
   &.root {
@@ -83,12 +88,12 @@ h2 {
     border-right-width: 1px;
     border-bottom-width: 1px;
     margin-bottom: 10px;
-    padding-bottom: 10px;
+    padding-bottom: 20px;
   }
 
   .my-arrow {
     position: relative;
-    top: -15px;
+    top: -25px;
     width: 8px;
     height: 8px;
     border-style: solid;

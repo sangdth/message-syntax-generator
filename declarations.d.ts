@@ -4,6 +4,7 @@ declare interface Word {
 }
 
 declare interface Match {
+  id: string
   match: string
   output?: Ouput
 }

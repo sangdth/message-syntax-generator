@@ -10,6 +10,7 @@ import {
   Button,
   Checkbox,
   Col,
+  Divider,
   Input as AntInput,
   // Popover,
   Row,
@@ -19,12 +20,13 @@ import { isEqual } from 'lodash';
 import {
   useDebounce,
   useWindowSize,
-  // usePrevious,
+  usePrevious,
 } from 'react-use';
 // import { isEqual } from 'lodash';
 import PropTypes from 'prop-types';
 import c from 'classnames';
-// import { makeHash, updateArray } from '../../helpers';
+
+import { makeHash } from '../../helpers';
 import './styles.scss';
 
 const { Option } = Select;
@@ -32,7 +34,7 @@ const syntaxTypes = ['date', 'time', 'number', 'plural', 'select', 'selectordina
 
 const Input = (props: any) => {
   const {
-    // onChange,
+    onChange,
     root,
     output,
   } = props;
@@ -40,7 +42,7 @@ const Input = (props: any) => {
   const { width: windowWidth } = useWindowSize();
 
   const [text, setText] = useState(output.value);
-  const [syntaxes, setSyntaxes] = useState<Syntax[]>(output.syntaxes);
+  const [syntaxes, setSyntaxes] = useState<Syntax[]>(output.syntaxes || []);
 
   const [words, setWords] = useState<Word[]>([]);
   const [selected, setSelected] = useState<Word>(null);
@@ -53,6 +55,10 @@ const Input = (props: any) => {
           key: found.key,
           type: found.type,
           matches: found.matches,
+          inputs: found.matches.reduce((o: any, e: any, i: number) => ({
+            ...o,
+            [i]: e.match,
+          }), {}),
         };
       }
     }
@@ -60,9 +66,11 @@ const Input = (props: any) => {
       key: '',
       type: '',
       matches: [{
+        id: makeHash(),
         match: '',
-        output: { value: '', syntaxes: [] },
+        output: { value: '' },
       }],
+      inputs: {},
     };
   }, [selected, syntaxes]);
 
@@ -70,13 +78,13 @@ const Input = (props: any) => {
   const [type, setType] = useState(initial.type);
   const [matches, setMatches] = useState(initial.matches);
   const [lock, setLock] = useState(false);
+  const [matchInputs, setMatchInputs] = useState(initial.inputs);
 
+  const refs = useMemo(() => words.map(() => createRef<HTMLSpanElement>()), [words]);
 
   /* -------------------------------------------------------------------
    * Computed variables
    */
-  const refs = useMemo(() => words.map(() => createRef<HTMLSpanElement>()), [words]);
-
   const arrowPosition = useMemo(() => {
     if (selected) {
       const { index } = selected;
@@ -141,7 +149,17 @@ const Input = (props: any) => {
 
       setSyntaxes(tmp);
     }
-  }, 250, [key, type]);
+  }, 250, [key, type, matches]);
+
+  const prevMatchInputs = usePrevious(matchInputs);
+  useEffect(() => {
+    if (Object.keys(matchInputs).length > 0 && !isEqual(matchInputs, prevMatchInputs)) {
+      setMatches(matches.map((match: Match) => ({
+        ...match,
+        match: matchInputs[match.id],
+      })));
+    }
+  }, [matchInputs, matches, prevMatchInputs]);
 
   useEffect(() => {
     if (selected) {
@@ -154,8 +172,9 @@ const Input = (props: any) => {
         setKey('');
         setType('');
         setMatches([{
+          id: makeHash(),
           match: '',
-          output: { value: '', syntaxes: [] },
+          output: { value: '' },
         }]);
       }
     }
@@ -168,15 +187,18 @@ const Input = (props: any) => {
     }
   }, [text]);
 
-  console.log({ syntaxes });
-
   /* -------------------------------------------------------------------
    * Rendering
    */
+  console.log({ ...matchInputs });
+
   return (
     <>
       {matches.map((match: Match, index: number) => (
-        <Fragment key={match.match}>
+        <Fragment key={match.id}>
+
+          {!root && <Divider className="divider" />}
+
           <Row type="flex" align="middle" gutter={[10, 10]}>
             {!root && (
               <>
@@ -185,37 +207,54 @@ const Input = (props: any) => {
                 </Col>
                 <Col span={4}>
                   <AntInput
-                    value={match.match}
+                    value={matchInputs[match.id]}
+                    onChange={(e: any) => setMatchInputs({
+                      ...matchInputs,
+                      [match.id]: e.target.value,
+                    })}
                   />
                 </Col>
-                <Col span={2} offset={10}>
+
+                <Col span={2} offset={11}>
                   <Checkbox
-                    checked={!!match.output}
+                    checked={!!match.output.syntaxes}
                     className="checkbox"
                   >
                     Nested
                   </Checkbox>
                 </Col>
-                <Col span={3} style={{ textAlign: 'right' }}>
-                  {matches.length - 1 === index ? (
-                    <Button
-                      disabled={!match.match}
-                      type="primary"
-                      icon="plus"
-                    />
-                  ) : (
-                    <Button
-                      icon="minus"
-                      onClick={() => {}}
-                    />
-                  )}
-                </Col>
+
+                {matches.length - 1 === index && (
+                  <>
+                    <Col span={1} style={{ textAlign: 'right' }}>
+                      <Button
+                        disabled={!match.match}
+                        type="primary"
+                        icon="plus"
+                        onClick={() => setMatches([...matches, {
+                          id: makeHash(),
+                          match: '',
+                          output: { value: '' },
+                        }])}
+                      />
+                    </Col>
+                    <Col span={1} style={{ textAlign: 'right' }}>
+                      <Button
+                        disabled={matches.length === 1}
+                        icon="minus"
+                        onClick={() => setMatches(
+                          matches.filter((m: Match) => m.id !== match.id),
+                        )}
+                      />
+                    </Col>
+                  </>
+                )}
               </>
             )}
           </Row>
 
           <Row type="flex" align="middle" gutter={[10, 10]}>
-            {!root && (
+            {!root && ( // output label, except the root
             <Col span={2} offset={1} className="label-col">
               Output:
             </Col>
